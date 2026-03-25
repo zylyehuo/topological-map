@@ -7,17 +7,18 @@
 ![hand](./assets/hand.jpg)
 ![maze](./assets/maze.jpg)
 ![road](./assets/road.jpg)
+![maze_direction](./assets/maze_direction.jpg)
 
 # 使用步骤
 ## 第一步：安装依赖
 ### 安装 nlohmann
-```
+```bash
 sudo apt install nlohmann-json3-dev
 
 ```
 ### 安装 opencv
 ## 第二步：下载项目
-```
+```bash
 git clone git@github.com:zylyehuo/topological-map.git
 
 ```
@@ -29,26 +30,45 @@ git clone git@github.com:zylyehuo/topological-map.git
 
 ## 第六步：运行指令
 ### Python 版本
-```
+```bash
 python3 ./trace_skeleton.py
 
 ```
 
-```
+```bash
 python3 ./astar_pathfinder.py
 
 ```
 ### C++ 版本
-```
+#### 终点无朝向要求
+![maze](./assets/maze.jpg)
+```bash
 g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -O3
 
 ./map_generator
 
 ```
 
-```
+```bash
 g++ astar_pathfinder.cpp -o astar_pathfinder `pkg-config --cflags --libs opencv4` -O3
 
 ./astar_pathfinder
+
+```
+#### 终点朝向固定
+![maze_direction](./assets/maze_direction.jpg)
+```bash
+# 1. 编译基础拓扑图生成器
+g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -std=c++11
+
+./map_generator
+
+```
+
+```bash
+# 2. 编译姿态约束 A* 算法
+g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --cflags --libs opencv4` -std=c++11
+
+./astar_pathfinder_direction 1182 w 245 a 432 w
 
 ```
