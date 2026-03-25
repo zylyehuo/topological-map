@@ -6,18 +6,19 @@
 # 具体效果
 ![maze](./assets/maze.jpg)
 # 使用步骤
-## 第一步：下载项目
+## Python 版本
+### 第一步：下载项目
 ```
 git clone git@github.com:zylyehuo/topological-map.git
 
 ```
-## 第二步：准备所需的图片
+### 第二步：准备所需的图片
 
-## 第三步：根据文件路径修改源码中的相关部分
+### 第三步：根据文件路径修改源码中的相关部分
 
-## 第四步：设置 astar_pathfinder.py 文件中的起点与终点序号
+### 第四步：设置 astar_pathfinder.py 文件中的起点与终点序号
 
-## 第五步：运行指令
+### 第五步：运行指令
 ```
 python3 ./trace_skeleton.py
 
