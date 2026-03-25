@@ -16,3 +16,14 @@ git clone git@github.com:zylyehuo/topological-map.git
 ## 第三步：根据文件路径修改源码中的相关部分
 
 ## 第四步：设置 astar_pathfinder.py 文件中的起点与终点序号
+
+## 第五步：运行指令
+```
+python3 ./trace_skeleton.py
+
+```
+
+```
+python3 ./astar_pathfinder.py
+
+```
