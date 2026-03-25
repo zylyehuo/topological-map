@@ -3,6 +3,8 @@
 
 > 主要用于将已有的“二值化”图片自动构建一张拓扑地图，以供A*等算法使用
 
+> 是单纯的 python 、C++ 实现，未结合 ROS 使用
+
 # 具体效果
 ![hand](./assets/hand.jpg)
 ![maze](./assets/maze.jpg)
