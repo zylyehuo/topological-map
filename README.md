@@ -9,7 +9,7 @@
 ![hand](./assets/hand.jpg)
 ![maze](./assets/maze.jpg)
 ![road](./assets/road.jpg)
-![maze_direction](./assets/maze_direction.jpg)
+![maze_direction_change](./assets/maze_direction_change.jpg)
 
 # 使用步骤
 ## 第一步：安装依赖
