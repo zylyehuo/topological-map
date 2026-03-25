@@ -58,7 +58,7 @@ g++ astar_pathfinder.cpp -o astar_pathfinder `pkg-config --cflags --libs opencv4
 
 ```
 #### 终点朝向固定
-![maze_direction](./assets/maze_direction.jpg)
+![maze_direction_change](./assets/maze_direction_change.jpg)
 ```bash
 # 1. 编译基础拓扑图生成器
 g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -std=c++11
