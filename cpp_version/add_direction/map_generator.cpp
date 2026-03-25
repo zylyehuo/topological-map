@@ -18,9 +18,6 @@ struct PointComp {
     }
 };
 
-// ==========================================
-// 定义鼠标交互所需的数据结构和回调函数
-// ==========================================
 struct MouseData {
     cv::Mat base_canvas; 
     std::vector<std::pair<cv::Point, int>> node_info; 
@@ -31,28 +28,51 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
         MouseData* data = static_cast<MouseData*>(userdata);
         cv::Mat display = data->base_canvas.clone(); 
         
-        for (const auto& node : data->node_info) {
-            int dx = node.first.x - x;
-            int dy = node.first.y - y;
+        int min_dist = 2500; 
+        int best_idx = -1;
+
+        // 遍历所有节点，找到距离鼠标最近的那一个
+        for (size_t i = 0; i < data->node_info.size(); i++) {
+            int dx = data->node_info[i].first.x - x;
+            int dy = data->node_info[i].first.y - y;
+            int dist = dx * dx + dy * dy;
             
-            if (dx * dx + dy * dy <= 100) { 
-                cv::circle(display, node.first, 6, cv::Scalar(0, 255, 0), -1);
-                cv::putText(display, std::to_string(node.second), 
-                            cv::Point(node.first.x + 8, node.first.y - 8),
-                            cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(139, 0, 0), 2, cv::LINE_AA);
-                break; 
+            if (dist < min_dist) {
+                min_dist = dist;
+                best_idx = i;
             }
         }
+
+        if (best_idx != -1) {
+            cv::Point pt = data->node_info[best_idx].first;
+            int node_id = data->node_info[best_idx].second;
+
+            cv::circle(display, pt, 6, cv::Scalar(0, 255, 0), -1);
+
+            std::string text = std::to_string(node_id);
+            int baseline = 0;
+            cv::Size text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.8, 2, &baseline);
+            
+            cv::Point text_org(pt.x + 10, pt.y - 5);
+
+            cv::rectangle(display, 
+                          text_org + cv::Point(-2, baseline + 2), 
+                          text_org + cv::Point(text_size.width + 2, -text_size.height - 2), 
+                          cv::Scalar(255, 255, 255), cv::FILLED);
+
+            cv::putText(display, text, text_org,
+                        cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(139, 0, 0), 2, cv::LINE_AA);
+        }
+
         cv::imshow("C++ Topology Map Generator", display);
     }
 }
 
 int main() {
-    // --- 配置路径 ---
-    std::string img_path = "./5/5.png"; 
-    std::string json_path = "./5/map_graph.json";
+    // --- 1. 配置路径 ---
+    std::string img_path = "./6/6.png"; 
+    std::string json_path = "./6/map_graph.json";
 
-    // 扩边大小
     const int PADDING = 40; 
 
     cv::Mat src = cv::imread(img_path, cv::IMREAD_GRAYSCALE);
@@ -64,7 +84,6 @@ int main() {
     cv::Mat bin;
     cv::threshold(src, bin, 200, 1, cv::THRESH_BINARY);
 
-    // 算法层面的 1 像素黑边保护
     cv::Mat padded_bin;
     cv::copyMakeBorder(bin, padded_bin, 1, 1, 1, 1, cv::BORDER_CONSTANT, cv::Scalar(0));
 
@@ -83,7 +102,6 @@ int main() {
     std::cout << "正在追踪拓扑图..." << std::endl;
     skeleton_tracer_t::polyline_t* polys = T->trace_skeleton(0, 0, T->W, T->H, 0);
 
-    // --- 构建图结构 (导出的坐标保持原样，不加 PADDING) ---
     std::vector<std::pair<int, int>> nodes_list;
     std::set<std::pair<int, int>> edges_set;
     std::map<std::pair<int, int>, int, PointComp> node_to_idx;
@@ -113,7 +131,6 @@ int main() {
         it = it->next;
     }
 
-    // --- 导出为 JSON ---
     json j_graph;
     j_graph["nodes"] = json::array();
     for (const auto& n : nodes_list) j_graph["nodes"].push_back({n.first, n.second});
@@ -124,19 +141,14 @@ int main() {
     o << std::setw(4) << j_graph << std::endl;
     std::cout << "JSON 拓扑地图成功保存至: " << json_path << " (生成节点数: " << nodes_list.size() << ")" << std::endl;
 
-    // --- 绘图准备 ---
     cv::Mat original_canvas;
     cv::Mat color_src = cv::imread(img_path, cv::IMREAD_COLOR);
     if(color_src.empty()) cv::cvtColor(src, original_canvas, cv::COLOR_GRAY2BGR);
     else original_canvas = color_src.clone();
 
-    // ==========================================
-    // 扩边,在原图的四周各加上 40 像素的纯白色边框
-    // ==========================================
     cv::Mat canvas;
     cv::copyMakeBorder(original_canvas, canvas, PADDING, PADDING, PADDING, PADDING, cv::BORDER_CONSTANT, cv::Scalar(255, 255, 255));
 
-    // 绘制连线 (画线时加上 PADDING 偏移)
     it = polys;
     cv::RNG rng(12345);
     while(it) {
@@ -155,28 +167,26 @@ int main() {
 
     MouseData mouse_data;
     
-    // 只绘制红点 (画点时加上 PADDING 偏移)
     for (const auto& pair : node_to_idx) {
         cv::Point pt(pair.first.first, pair.first.second);
         int node_id = pair.second;
-        
-        cv::Point display_pt(pt.x + PADDING, pt.y + PADDING); // 加上偏移的显示坐标
+        cv::Point display_pt(pt.x + PADDING, pt.y + PADDING); 
         cv::circle(canvas, display_pt, 4, cv::Scalar(0, 0, 255), -1); 
         mouse_data.node_info.push_back({display_pt, node_id});
     }
 
     mouse_data.base_canvas = canvas.clone();
 
-    // --- 窗口显示与回调绑定 ---
     cv::namedWindow("C++ Topology Map Generator", cv::WINDOW_NORMAL);
     int max_w = 1280, max_h = 720;
     double scale = std::min((double)max_w / canvas.cols, (double)max_h / canvas.rows);
     cv::resizeWindow("C++ Topology Map Generator", canvas.cols * scale, canvas.rows * scale);
+    
+    cv::setMouseCallback("C++ Topology Map Generator", onMouse, &mouse_data);   
 
     cv::imshow("C++ Topology Map Generator", canvas);
     cv::waitKey(0);
 
-    // --- 清理 ---
     T->destroy_polylines(polys);
     free(T->im);
     delete T;
