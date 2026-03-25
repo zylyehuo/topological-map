@@ -11,6 +11,13 @@
 ![road](./assets/road.jpg)
 ![maze_direction_change](./assets/maze_direction_change.jpg)
 
+# 图像预处理
+```
+g++ img_process.cpp -o image_process $(pkg-config --cflags --libs opencv4)
+
+./img_process
+
+```
 # 使用步骤
 ## 第一步：安装依赖
 ### 安装 nlohmann
