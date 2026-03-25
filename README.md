@@ -28,7 +28,7 @@ git clone git@github.com:zylyehuo/topological-map.git
 
 ## 第四步：根据文件路径修改源码中的相关部分
 
-## 第五步：设置 astar_pathfinder.py 文件中的起点与终点序号
+## 第五步：设置起点、终点
 
 ## 第六步：运行指令
 ### Python 版本
@@ -68,7 +68,7 @@ g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -std
 ```
 
 ```bash
-# 2. 编译姿态约束 A* 算法
+# 2. 编译姿态约束 A* 算法（包含起点、途经点和终点）
 g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --cflags --libs opencv4` -std=c++11
 
 ./astar_pathfinder_direction 1182 w 245 a 432 w
