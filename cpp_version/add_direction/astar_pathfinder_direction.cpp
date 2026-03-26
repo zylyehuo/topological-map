@@ -228,8 +228,8 @@ int main(int argc, char* argv[]) {
         route.push_back({node_id, dir});
     }
 
-    std::string img_path = "./5/5.png";
-    std::string json_path = "./5/map_graph.json"; 
+    std::string img_path = "./9/9.png";
+    std::string json_path = "./9/processed_graph.json"; 
 
     cv::Mat canvas = cv::imread(img_path, cv::IMREAD_COLOR);
     std::ifstream ifs(json_path);

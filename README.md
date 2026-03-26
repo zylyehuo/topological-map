@@ -10,6 +10,7 @@
 ![maze](./assets/maze.jpg)
 ![road](./assets/road.jpg)
 ![maze_direction_change](./assets/maze_direction_change.jpg)
+![process](./assets/process.jpg)
 
 # 使用步骤
 ## 第一步：安装依赖
@@ -68,7 +69,15 @@ g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -std
 ```
 
 ```bash
-# 2. 编译姿态约束 A* 算法（包含起点、途经点和终点）
+# 2. 节点预处理
+g++ process_graph.cpp -o process_graph -std=c++11 `pkg-config --cflags --libs opencv4`
+
+./process_graph
+
+```
+
+```bash
+# 3. 编译姿态约束 A* 算法（包含起点、途经点和终点）
 g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --cflags --libs opencv4` -std=c++11
 
 ./astar_pathfinder_direction 1182 w 245 a 432 w

@@ -1,385 +1,282 @@
 #include <iostream>
-#include <fstream>
 #include <vector>
-#include <queue>
+#include <fstream>
 #include <cmath>
-#include <algorithm>
-#include <unordered_map>
-#include <unordered_set>
+#include <map>
 #include <set>
-#include <numeric>
+#include <algorithm>
 #include <opencv2/opencv.hpp>
-#include "json.hpp" // 引入 nlohmann json
+#include <nlohmann/json.hpp>
 
+using namespace std;
+using namespace cv;
 using json = nlohmann::json;
 
-struct Node {
-    int x, y;
-    bool active;
-    Node(int _x, int _y, bool _active = true) : x(_x), y(_y), active(_active) {}
+// --- 可调参数 ---
+const double MERGE_DIST_THRESH = 20.0; // 节点合并距离阈值 (像素)
+const double BLACK_DIST_THRESH = 25.0; // 末端节点距离黑色区域的最小允许距离 (像素)
+const int PADDING = 40;                // 可视化时的边缘留白
+
+// 用于鼠标交互的数据结构
+struct MouseData {
+    cv::Mat base_canvas; 
+    std::vector<std::pair<cv::Point, int>> node_info; 
 };
 
-struct Edge {
-    int u, v;
-    Edge(int _u, int _v) : u(_u), v(_v) {}
-};
+// 鼠标回调函数：悬停显示节点 ID
+void onMouse(int event, int x, int y, int flags, void* userdata) {
+    if (event == cv::EVENT_MOUSEMOVE) {
+        MouseData* data = static_cast<MouseData*>(userdata);
+        cv::Mat display = data->base_canvas.clone(); 
+        
+        int min_dist = 2500; // 距离阈值的平方
+        int best_idx = -1;
 
-// 检查线段是否不仅可通行，且距离障碍物有一定安全距离 (避免贴墙)
-bool isLineClearThick(cv::Point p1, cv::Point p2, const cv::Mat& dt, float min_dist = 2.0f) {
-    cv::LineIterator it(dt, p1, p2, 8);
-    for (int i = 0; i < it.count; i++, ++it) {
-        if (dt.at<float>(it.pos()) < min_dist) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// 寻找 L 型路径的有效拐点。如果两种拐法都可行，选择处于更宽阔区域的那个
-cv::Point getValidLShapeCorner(cv::Point A, cv::Point B, const cv::Mat& dt, float min_dist = 2.0f) {
-    cv::Point C1(A.x, B.y);
-    cv::Point C2(B.x, A.y);
-
-    bool ok1 = isLineClearThick(A, C1, dt, min_dist) && isLineClearThick(C1, B, dt, min_dist);
-    bool ok2 = isLineClearThick(A, C2, dt, min_dist) && isLineClearThick(C2, B, dt, min_dist);
-
-    if (ok1 && ok2) {
-        return dt.at<float>(C1) > dt.at<float>(C2) ? C1 : C2;
-    } else if (ok1) {
-        return C1;
-    } else if (ok2) {
-        return C2;
-    }
-    return cv::Point(-1, -1);
-}
-
-// 核心优化算法
-void optimize_graph(std::vector<Node>& nodes, std::vector<Edge>& edges, const cv::Mat& img) {
-    // 1. 生成距离变换图
-    cv::Mat dt;
-    cv::distanceTransform(img > 127, dt, cv::DIST_L2, 3);
-
-    // 2. 节点全局居中：将节点安全地推向通道距离最大处
-    int radius = 5;
-    for (int iter = 0; iter < 3; ++iter) {
-        for (auto& n : nodes) {
-            if (!n.active) continue;
-            int bx = n.x, by = n.y;
-            float bval = dt.at<float>(n.y, n.x);
-            for (int dy = -radius; dy <= radius; ++dy) {
-                for (int dx = -radius; dx <= radius; ++dx) {
-                    int nx = n.x + dx, ny = n.y + dy;
-                    if (nx >= 0 && nx < img.cols && ny >= 0 && ny < img.rows) {
-                        float val = dt.at<float>(ny, nx);
-                        if (val > bval) {
-                            // 确保居中过程不会穿墙
-                            if(isLineClearThick(cv::Point(n.x, n.y), cv::Point(nx, ny), dt, 1.0f)) {
-                                bval = val; bx = nx; by = ny;
-                            }
-                        }
-                    }
-                }
+        // 遍历所有节点，找到距离鼠标最近的那一个
+        for (size_t i = 0; i < data->node_info.size(); i++) {
+            int dx = data->node_info[i].first.x - x;
+            int dy = data->node_info[i].first.y - y;
+            int dist = dx * dx + dy * dy;
+            
+            if (dist < min_dist) {
+                min_dist = dist;
+                best_idx = i;
             }
-            n.x = bx; n.y = by;
         }
-    }
 
-    // 3. 构建邻接表用于拓扑修改
-    std::vector<std::unordered_set<int>> adj(nodes.size());
+        if (best_idx != -1) {
+            cv::Point pt = data->node_info[best_idx].first;
+            int node_id = data->node_info[best_idx].second;
+
+            // 高亮当前节点
+            cv::circle(display, pt, 6, cv::Scalar(0, 255, 0), -1);
+
+            std::string text = std::to_string(node_id);
+            int baseline = 0;
+            cv::Size text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.8, 2, &baseline);
+            
+            cv::Point text_org(pt.x + 10, pt.y - 5);
+
+            // 绘制文字背景框
+            cv::rectangle(display, 
+                          text_org + cv::Point(-2, baseline + 2), 
+                          text_org + cv::Point(text_size.width + 2, -text_size.height - 2), 
+                          cv::Scalar(255, 255, 255), cv::FILLED);
+
+            // 绘制文字
+            cv::putText(display, text, text_org,
+                        cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(139, 0, 0), 2, cv::LINE_AA);
+        }
+
+        cv::imshow("Processed Topology Map Preview", display);
+    }
+}
+
+// 辅助函数：计算当前图中每个节点的度数
+map<int, int> calculate_degrees(const vector<pair<int, int>>& edges) {
+    map<int, int> deg;
     for (const auto& e : edges) {
-        if (e.u != e.v) {
-            adj[e.u].insert(e.v);
-            adj[e.v].insert(e.u);
+        deg[e.first]++;
+        deg[e.second]++;
+    }
+    return deg;
+}
+
+// 辅助函数：清理无效边（去除自环、去除重复边）
+void clean_edges(vector<pair<int, int>>& edges) {
+    set<pair<int, int>> unique_edges;
+    for (const auto& e : edges) {
+        if (e.first != e.second) {
+            unique_edges.insert({min(e.first, e.second), max(e.first, e.second)});
         }
     }
-
-    // 4. 核心化简：链式路径拉直 (消除锯齿，强制正交)
-    bool global_changed = true;
-    float min_clearance = 3.0f; // 要求新线条距离障碍物的最小安全距离
-
-    while (global_changed) {
-        global_changed = false;
-        std::vector<bool> visited(nodes.size(), false);
-
-        for (int i = 0; i < nodes.size(); ++i) {
-            if (!nodes[i].active || visited[i]) continue;
-
-            // 从端点或交叉路口开始追踪 "链" (Chain)
-            if (adj[i].size() == 1 || adj[i].size() >= 3 || (adj[i].size() == 2 && i == 0)) {
-                for (int neighbor : adj[i]) {
-                    if (visited[neighbor]) continue;
-
-                    std::vector<int> chain;
-                    chain.push_back(i);
-                    int curr = neighbor;
-                    int prev = i;
-
-                    // 追踪连续的度为 2 的节点
-                    while (true) {
-                        chain.push_back(curr);
-                        visited[curr] = true;
-                        if (adj[curr].size() != 2) break; 
-
-                        int next_node = -1;
-                        for (int nxt : adj[curr]) {
-                            if (nxt != prev) { next_node = nxt; break; }
-                        }
-                        if (next_node == -1) break;
-                        prev = curr;
-                        curr = next_node;
-                    }
-
-                    // 对整条链尝试直接拉直或使用最少的 L 型连接
-                    if (chain.size() > 2) {
-                        int c_idx = 0;
-                        std::vector<cv::Point> new_points;
-                        new_points.push_back(cv::Point(nodes[chain[0]].x, nodes[chain[0]].y));
-
-                        while (c_idx < chain.size() - 1) {
-                            int best_next = -1;
-                            int path_type = 0; // 1: 一条直线, 2: 一个L型直角
-                            cv::Point best_corner(-1, -1);
-
-                            // 从最远处向回尝试跳跃，贪心寻找最长的笔直或单拐点路径
-                            for (int k = chain.size() - 1; k > c_idx; --k) {
-                                cv::Point A(nodes[chain[c_idx]].x, nodes[chain[c_idx]].y);
-                                cv::Point B(nodes[chain[k]].x, nodes[chain[k]].y);
-
-                                // 尝试直线
-                                if (A.x == B.x || A.y == B.y) {
-                                    if (isLineClearThick(A, B, dt, min_clearance)) {
-                                        best_next = k; path_type = 1; break;
-                                    }
-                                }
-                                // 尝试 L 型
-                                cv::Point corner = getValidLShapeCorner(A, B, dt, min_clearance);
-                                if (corner.x != -1) {
-                                    best_next = k; path_type = 2; best_corner = corner; break;
-                                }
-                            }
-
-                            if (best_next != -1) {
-                                if (path_type == 2) new_points.push_back(best_corner);
-                                if (best_next < chain.size() - 1) new_points.push_back(cv::Point(nodes[chain[best_next]].x, nodes[chain[best_next]].y));
-                                c_idx = best_next;
-                            } else {
-                                c_idx++;
-                                if (c_idx < chain.size() - 1) new_points.push_back(cv::Point(nodes[chain[c_idx]].x, nodes[chain[c_idx]].y));
-                            }
-                        }
-                        new_points.push_back(cv::Point(nodes[chain.back()].x, nodes[chain.back()].y));
-
-                        // 如果路径被大幅简化（节点数减少），更新拓扑图
-                        if (new_points.size() < chain.size()) {
-                            // 移除旧边和旧节点
-                            for (size_t k = 0; k < chain.size() - 1; ++k) {
-                                adj[chain[k]].erase(chain[k+1]);
-                                adj[chain[k+1]].erase(chain[k]);
-                            }
-                            for (size_t k = 1; k < chain.size() - 1; ++k) nodes[chain[k]].active = false;
-
-                            // 插入新结构
-                            int last_id = chain[0];
-                            for (size_t p = 1; p < new_points.size() - 1; ++p) {
-                                nodes.push_back(Node(new_points[p].x, new_points[p].y, true));
-                                int new_id = nodes.size() - 1;
-                                adj.push_back(std::unordered_set<int>());
-                                adj[last_id].insert(new_id); adj[new_id].insert(last_id);
-                                last_id = new_id;
-                            }
-                            adj[last_id].insert(chain.back()); adj[chain.back()].insert(last_id);
-
-                            global_changed = true;
-                            break; // 拓扑改变，跳出当前循环重新检测
-                        }
-                    }
-                }
-                if (global_changed) break;
-            }
-        }
-    }
-
-    // 5. 将处理后的邻接表转换回边集，并执行最终的绝对正交保护（针对极少数直接相连但不平行的路口）
-    std::vector<Edge> temp_edges;
-    for (int u = 0; u < adj.size(); ++u) {
-        for (int v : adj[u]) {
-            if (u < v && nodes[u].active && nodes[v].active) {
-                temp_edges.push_back(Edge(u, v));
-            }
-        }
-    }
-
-    std::vector<Edge> final_ortho_edges;
-    for (const auto& e : temp_edges) {
-        Node& u = nodes[e.u]; Node& v = nodes[e.v];
-        if (u.x == v.x || u.y == v.y) {
-            final_ortho_edges.push_back(e);
-        } else {
-            // 兜底策略：强制插入90度直角
-            cv::Point A(u.x, u.y), B(v.x, v.y);
-            cv::Point corner = getValidLShapeCorner(A, B, dt, 1.0f); // 兜底放宽限制
-            if (corner.x == -1) corner = cv::Point(A.x, B.y); // 极端情况忽略碰撞墙体强制成角
-
-            nodes.push_back(Node(corner.x, corner.y, true));
-            int c_id = nodes.size() - 1;
-            final_ortho_edges.push_back(Edge(e.u, c_id));
-            final_ortho_edges.push_back(Edge(c_id, e.v));
-        }
-    }
-    edges = final_ortho_edges;
-
-    // 6. 清理冗余的共线中间节点
-    bool cleanup = true;
-    while (cleanup) {
-        cleanup = false;
-        std::vector<std::vector<int>> cur_adj(nodes.size());
-        for (auto& e : edges) {
-            cur_adj[e.u].push_back(e.v);
-            cur_adj[e.v].push_back(e.u);
-        }
-
-        for (int i = 0; i < nodes.size(); ++i) {
-            if (!nodes[i].active || cur_adj[i].size() != 2) continue;
-            int u = cur_adj[i][0];
-            int v = cur_adj[i][1];
-            Node& N = nodes[i]; Node& U = nodes[u]; Node& V = nodes[v];
-
-            if ((U.x == N.x && N.x == V.x) || (U.y == N.y && N.y == V.y)) {
-                if (isLineClearThick(cv::Point(U.x, U.y), cv::Point(V.x, V.y), dt, 1.0f)) {
-                    N.active = false;
-                    cleanup = true;
-                    std::vector<Edge> new_edges_set;
-                    for (auto& e : edges) {
-                        if (e.u == i || e.v == i) continue;
-                        new_edges_set.push_back(e);
-                    }
-                    new_edges_set.push_back(Edge(u, v));
-                    edges = new_edges_set;
-                    break;
-                }
-            }
-        }
-    }
+    edges.assign(unique_edges.begin(), unique_edges.end());
 }
 
 int main() {
-    // 1. 读取图像与 JSON
-    cv::Mat img = cv::imread("./9/9.png", cv::IMREAD_GRAYSCALE);
-    if (img.empty()) {
-        std::cerr << "错误：无法读取图片 ./9/9.png" << std::endl;
-        return -1;
-    }
-    cv::threshold(img, img, 127, 255, cv::THRESH_BINARY);
+    // --- 1. 配置路径 ---
+    string img_path = "./9/9.png"; 
+    string json_in_path = "./9/map_graph.json";
+    string json_out_path = "./9/processed_graph.json";
 
-    std::ifstream ifs("./9/map_graph.json");
+    // --- 2. 读取 JSON 文件 ---
+    ifstream ifs(json_in_path);
     if (!ifs.is_open()) {
-        std::cerr << "错误：无法读取 map_graph.json" << std::endl;
+        cerr << "错误：无法打开 " << json_in_path << endl;
         return -1;
     }
-    json j; ifs >> j;
-
-    std::vector<Node> raw_nodes;
-    for (auto& n : j["nodes"]) raw_nodes.push_back(Node(n[0].get<int>(), n[1].get<int>(), true));
+    json j;
+    ifs >> j;
     
-    int num_raw_nodes = raw_nodes.size();
-    std::vector<std::vector<int>> adj(num_raw_nodes);
-    for (auto& e : j["edges"]) {
-        adj[e[0]].push_back(e[1]);
-        adj[e[1]].push_back(e[0]);
+    vector<Point2f> nodes;
+    for (const auto& n : j["nodes"]) {
+        nodes.push_back(Point2f(n[0].get<float>(), n[1].get<float>()));
+    }
+    
+    vector<pair<int, int>> edges;
+    for (const auto& e : j["edges"]) {
+        edges.push_back({e[0].get<int>(), e[1].get<int>()});
     }
 
-    // 2. 提取主骨骼 (仅保留连通性最大的一组)
-    std::vector<bool> visited(num_raw_nodes, false);
-    std::vector<int> largest_component;
+    // --- 3. 加载图片并计算距离变换 ---
+    Mat img = imread(img_path, IMREAD_GRAYSCALE);
+    if (img.empty()) {
+        cerr << "错误：无法打开图片 " << img_path << endl;
+        return -1;
+    }
+    
+    Mat binary, dist_map;
+    threshold(img, binary, 127, 255, THRESH_BINARY);
+    distanceTransform(binary, dist_map, DIST_L2, 3);
 
-    for (int i = 0; i < num_raw_nodes; ++i) {
-        if (!visited[i]) {
-            std::vector<int> comp;
-            std::queue<int> q;
-            q.push(i); visited[i] = true;
-            while (!q.empty()) {
-                int u = q.front(); q.pop();
-                comp.push_back(u);
-                for (int v : adj[u]) {
-                    if (!visited[v]) {
-                        visited[v] = true;
-                        q.push(v);
-                    }
+    cout << "开始处理：初始节点数 " << nodes.size() << ", 边数 " << edges.size() << endl;
+
+    // --- 4. 算法核心：合并相近节点 (优先保留端点) ---
+    bool merging = true;
+    while (merging) {
+        merging = false;
+        double min_d = 1e9;
+        int best_u = -1, best_v = -1;
+        
+        for (const auto& e : edges) {
+            double d = norm(nodes[e.first] - nodes[e.second]);
+            if (d < MERGE_DIST_THRESH && d < min_d) {
+                min_d = d;
+                best_u = e.first;
+                best_v = e.second;
+            }
+        }
+        
+        if (best_u != -1) {
+            map<int, int> degrees = calculate_degrees(edges);
+            int deg_u = degrees[best_u];
+            int deg_v = degrees[best_v];
+            
+            // 优先级：端点(3) > 分叉点(2) > 普通节点(1)
+            int score_u = (deg_u == 1) ? 3 : (deg_u >= 3 ? 2 : 1);
+            int score_v = (deg_v == 1) ? 3 : (deg_v >= 3 ? 2 : 1);
+            
+            int keep_idx = (score_u >= score_v) ? best_u : best_v;
+            int remove_idx = (score_u >= score_v) ? best_v : best_u;
+            
+            for (auto& e : edges) {
+                if (e.first == remove_idx) e.first = keep_idx;
+                if (e.second == remove_idx) e.second = keep_idx;
+            }
+            clean_edges(edges);
+            merging = true;
+        }
+    }
+
+    // --- 5. 算法核心：检查并删除距离黑色区域过近的末端节点 ---
+    bool pruning = true;
+    while (pruning) {
+        pruning = false;
+        map<int, int> degrees = calculate_degrees(edges);
+        set<int> to_remove;
+        
+        for (const auto& kv : degrees) {
+            if (kv.second == 1) { // 仅检查末端节点
+                int node_idx = kv.first;
+                Point2f p = nodes[node_idx];
+                
+                int x = max(0, min(img.cols - 1, (int)round(p.x)));
+                int y = max(0, min(img.rows - 1, (int)round(p.y)));
+                
+                float dist_to_black = dist_map.at<float>(y, x);
+                if (dist_to_black < BLACK_DIST_THRESH) {
+                    to_remove.insert(node_idx);
                 }
             }
-            if (comp.size() > largest_component.size()) largest_component = comp;
+        }
+        
+        if (!to_remove.empty()) {
+            vector<pair<int, int>> new_edges;
+            for (const auto& e : edges) {
+                if (to_remove.count(e.first) == 0 && to_remove.count(e.second) == 0) {
+                    new_edges.push_back(e);
+                }
+            }
+            edges = new_edges;
+            pruning = true;
         }
     }
 
-    std::vector<Node> main_nodes;
-    std::unordered_map<int, int> old_to_new;
-    for (size_t i = 0; i < largest_component.size(); ++i) {
-        old_to_new[largest_component[i]] = i;
-        main_nodes.push_back(raw_nodes[largest_component[i]]);
+    // --- 6. 重新映射节点索引并导出 JSON ---
+    set<int> active_node_indices;
+    for (const auto& e : edges) {
+        active_node_indices.insert(e.first);
+        active_node_indices.insert(e.second);
     }
-
-    std::vector<Edge> main_edges;
-    for (auto& e : j["edges"]) {
-        if (old_to_new.count(e[0]) && old_to_new.count(e[1])) {
-            main_edges.push_back(Edge(old_to_new[e[0]], old_to_new[e[1]]));
-        }
-    }
-
-    // 3. 执行全套优化算法：居中、正交化与折线消除
-    std::vector<Node> final_nodes = main_nodes;
-    std::vector<Edge> final_edges = main_edges;
-    optimize_graph(final_nodes, final_edges, img);
-
-    // 4. 结果可视化展示（仅预览用，不保存图片）
-    cv::Mat out_img;
-    cv::cvtColor(img, out_img, cv::COLOR_GRAY2BGR);
-
-    for (const auto& e : final_edges) {
-        if(final_nodes[e.u].active && final_nodes[e.v].active) {
-            cv::line(out_img, cv::Point(final_nodes[e.u].x, final_nodes[e.u].y), 
-                             cv::Point(final_nodes[e.v].x, final_nodes[e.v].y), cv::Scalar(255, 0, 0), 2);
-        }
-    }
-
-    for (const auto& n : final_nodes) {
-        if(n.active) {
-            cv::circle(out_img, cv::Point(n.x, n.y), 4, cv::Scalar(0, 255, 0), -1);
-        }
-    }
-
-    cv::namedWindow("Processed Graph", cv::WINDOW_NORMAL);
-    int max_w = 1280, max_h = 720;
-    double scale = std::min((double)max_w / out_img.cols, (double)max_h / out_img.rows);
-    cv::resizeWindow("Processed Graph", out_img.cols * scale, out_img.rows * scale);
-    cv::imshow("Processed Graph", out_img);
     
-    std::cout << "优化处理完毕。请查看可视化结果，按任意键保存 JSON 并退出..." << std::endl;
-    cv::waitKey(0);
+    vector<Point2f> final_nodes;
+    map<int, int> old_to_new;
+    int new_index = 0;
+    
+    for (int old_idx : active_node_indices) {
+        final_nodes.push_back(nodes[old_idx]);
+        old_to_new[old_idx] = new_index++;
+    }
+    
+    vector<pair<int, int>> final_edges;
+    for (const auto& e : edges) {
+        final_edges.push_back({old_to_new[e.first], old_to_new[e.second]});
+    }
 
-    // 5. 将处理后干净的拓扑图保存为新 JSON
     json out_j;
-    std::unordered_map<int, int> final_index_map;
-    int current_index = 0;
-    
-    // 只输出有效的活跃节点
-    for (size_t i = 0; i < final_nodes.size(); ++i) {
-        if (final_nodes[i].active) {
-            out_j["nodes"].push_back({final_nodes[i].x, final_nodes[i].y});
-            final_index_map[i] = current_index++;
-        }
+    out_j["nodes"] = json::array();
+    out_j["edges"] = json::array();
+    for (const auto& p : final_nodes) {
+        out_j["nodes"].push_back({(int)round(p.x), (int)round(p.y)});
+    }
+    for (const auto& e : final_edges) {
+        out_j["edges"].push_back({e.first, e.second});
     }
     
-    // 映射连线关系
+    ofstream ofs(json_out_path);
+    ofs << setw(4) << out_j << endl;
+    ofs.close();
+    
+    cout << "处理完成！最终节点数 " << final_nodes.size() << ", 边数 " << final_edges.size() << endl;
+    cout << "JSON 拓扑地图成功保存至: " << json_out_path << endl;
+
+    // --- 7. 准备交互式可视化 ---
+    Mat original_canvas;
+    Mat color_src = imread(img_path, IMREAD_COLOR);
+    if (color_src.empty()) cvtColor(img, original_canvas, COLOR_GRAY2BGR);
+    else original_canvas = color_src.clone();
+
+    // 增加 Padding 留白
+    Mat canvas;
+    copyMakeBorder(original_canvas, canvas, PADDING, PADDING, PADDING, PADDING, BORDER_CONSTANT, Scalar(255, 255, 255));
+
+    // 画边（蓝色）
     for (const auto& e : final_edges) {
-        if (final_nodes[e.u].active && final_nodes[e.v].active) {
-            out_j["edges"].push_back({final_index_map[e.u], final_index_map[e.v]});
-        }
+        Point p1(final_nodes[e.first].x + PADDING, final_nodes[e.first].y + PADDING);
+        Point p2(final_nodes[e.second].x + PADDING, final_nodes[e.second].y + PADDING);
+        line(canvas, p1, p2, Scalar(255, 0, 0), 2, LINE_AA);
     }
 
-    std::ofstream ofs("./9/processed_map_graph.json");
-    ofs << out_j.dump(4);
-    ofs.close();
-    std::cout << "干净的骨架拓扑结构已保存至 ./9/processed_map_graph.json" << std::endl;
+    // 画节点（红色）并录入鼠标交互数据
+    MouseData mouse_data;
+    for (size_t i = 0; i < final_nodes.size(); i++) {
+        Point pt(final_nodes[i].x + PADDING, final_nodes[i].y + PADDING);
+        circle(canvas, pt, 4, Scalar(0, 0, 255), -1, LINE_AA);
+        mouse_data.node_info.push_back({pt, (int)i});
+    }
+
+    mouse_data.base_canvas = canvas.clone();
+
+    // --- 8. 启动交互窗口 ---
+    namedWindow("Processed Topology Map Preview", WINDOW_NORMAL);
+    int max_w = 1280, max_h = 720;
+    double scale = min((double)max_w / canvas.cols, (double)max_h / canvas.rows);
+    resizeWindow("Processed Topology Map Preview", canvas.cols * scale, canvas.rows * scale);
+    
+    setMouseCallback("Processed Topology Map Preview", onMouse, &mouse_data);   
+
+    imshow("Processed Topology Map Preview", canvas);
+    waitKey(0);
 
     return 0;
 }
