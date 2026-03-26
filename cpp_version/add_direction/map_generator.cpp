@@ -31,7 +31,6 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
         int min_dist = 2500; 
         int best_idx = -1;
 
-        // 遍历所有节点，找到距离鼠标最近的那一个
         for (size_t i = 0; i < data->node_info.size(); i++) {
             int dx = data->node_info[i].first.x - x;
             int dy = data->node_info[i].first.y - y;
@@ -70,8 +69,8 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
 
 int main() {
     // --- 1. 配置路径 ---
-    std::string img_path = "./9/9.png"; 
-    std::string json_path = "./9/map_graph.json";
+    std::string img_path = "./10/10.png"; 
+    std::string json_path = "./10/map_graph.json";
 
     const int PADDING = 40; 
 

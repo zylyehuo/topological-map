@@ -1,4 +1,3 @@
-# merged_road_segmentation.py
 # 目标：提取边缘 -> 初步连接与填充 -> 高级骨架端点连接 -> 最终闭合填充 -> 最终结果：道路黑色，背景白色
 
 import cv2
@@ -26,8 +25,7 @@ def connect_endpoints_on_skeleton(binary_img, max_gap_px=150):
     
     # 端点检测 (命中或击中变换 kernel)
     kernel = np.array([[1, 1, 1], [1, 10, 1], [1, 1, 1]], dtype=np.uint8)
-    # 注意：如果原本 skeleton 是 0和255，这里的滤波可能会和 11 不匹配
-    # 但为了绝对保持你原有的算法逻辑，此处不做修改。
+
     neighbor_counts = cv2.filter2D(skeleton, -1, kernel)
     endpoints = np.argwhere(neighbor_counts == 11) # 11表示中心点(10) + 1个邻居(1)
 
@@ -61,12 +59,10 @@ def connect_endpoints_on_skeleton(binary_img, max_gap_px=150):
 def process_road_image(
     input_path: str,
     output_path: str,
-    # Phase 1 参数 (来自 22.py)
     low_thresh: int = 40,
     high_thresh: int = 120,
     phase1_min_area: int = 500,
     phase1_morph_kernel: int = 11,
-    # Phase 2 参数 (来自 33.py)
     phase2_min_area: int = 30,
     max_gap: int = 50000
 ):
@@ -74,7 +70,7 @@ def process_road_image(
         raise FileNotFoundError(f"无法读取图片: {input_path}")
 
     # ==========================================
-    # 第一阶段：基础边缘提取与初步填充 (对应原 22.py)
+    # 第一阶段：基础边缘提取与初步填充
     # ==========================================
     img = cv2.imread(input_path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -95,11 +91,8 @@ def process_road_image(
     road_mask_white_p1 = np.zeros_like(closed_p1)
     cv2.drawContours(road_mask_white_p1, contours_p1, -1, 255, thickness=cv2.FILLED)
 
-    # 【优化点】：此时 road_mask_white_p1 正好是 33.py 中需要的“黑底白线”图。
-    # 我们直接跳过原代码中反相保存再读取反相的过程，直接进入第二阶段。
-
     # ==========================================
-    # 第二阶段：高级端点连接与最终闭合 (对应原 33.py)
+    # 第二阶段：高级端点连接与最终闭合
     # ==========================================
     # 清理掉可能存在的微小颗粒噪点
     mask_wob_clean = _remove_small_components(road_mask_white_p1, min_area=phase2_min_area)
@@ -120,7 +113,7 @@ def process_road_image(
     final_road_mask_white = np.zeros_like(gray)
     cv2.drawContours(final_road_mask_white, contours_p2, -1, 255, thickness=cv2.FILLED)
     
-    # 【核心最后一步】：反相变回“道路黑，背景白”
+    # 反相变回“道路黑，背景白”
     final_inverted_mask = cv2.bitwise_not(final_road_mask_white)
     
     # 保存最终结果

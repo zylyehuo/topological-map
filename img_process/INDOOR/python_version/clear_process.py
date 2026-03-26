@@ -1,6 +1,3 @@
-# universal_line_connector.py
-# 目标：通用型边缘提取与断线连接，兼容“真实道路照片”与“白底黑线平面图”
-
 import cv2
 import numpy as np
 from skimage.morphology import skeletonize
@@ -58,7 +55,7 @@ def process_universal_image(
     input_path: str,
     output_path: str,
     max_gap: int = 150,         # 最大允许连接的断口距离
-    fill_external: bool = False # 核心开关：是否将整个轮廓内部填满（道路适用 True，平面图适用 False）
+    fill_external: bool = False # 是否将整个轮廓内部填满（道路适用 True，平面图适用 False）
 ):
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"无法读取图片: {input_path}")
@@ -89,7 +86,7 @@ def process_universal_image(
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     closed = cv2.morphologyEx(clean_mask, cv2.MORPH_CLOSE, kernel_close)
     
-    # 开运算：极度重要！去除边缘凸起的毛刺，确保后续骨架化是一条干净的单线
+    # 开运算：去除边缘凸起的毛刺，确保后续骨架化是一条干净的单线
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     smoothed = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel_open)
 
@@ -128,11 +125,9 @@ def process_universal_image(
         print("保存失败，请检查路径。")
 
 if __name__ == "__main__":
-    # --- 请修改为你自己的路径 ---
     input_img = "/home/yehuo/img_process/origin/0.png"
     output_img = "/home/yehuo/img_process/process/0_clear_process.png"
     
-    # 关键参数：
     # max_gap: 平面图建议 100-200，道路如果有大缺口可以调大
-    # fill_external: 对于 0.png 这种平面图务必设为 False，否则整个房子内部全变黑。如果是之前的纯块状道路可以设为 True
+    # fill_external: 对于平面图务必设为 False，否则整个房子内部全变黑。如果是纯块状道路可以设为 True
     process_universal_image(input_img, output_img, max_gap=150, fill_external=False)

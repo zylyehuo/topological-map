@@ -34,11 +34,11 @@ def click_event(event, x, y, flags, params):
             cv2.line(img_copy, pt1, pt2, LINE_COLOR, LINE_THICKNESS)
             cv2.imshow('Image Editor', img_copy)
 
-    # 【功能 2】当鼠标右键按下时：区域填充（油漆桶）
+    # 【功能 2】当鼠标右键按下时：区域填充
     elif event == cv2.EVENT_RBUTTONDOWN:
         print(f"执行区域填充: ({x}, {y})")
         
-        # 【重要】在实际修改图片前，把当前状态存入历史记录
+        # 在实际修改图片前，把当前状态存入历史记录
         history.append(img_copy.copy())
         
         # 获取图片的宽高

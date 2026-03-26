@@ -301,6 +301,6 @@ if __name__ == "__main__":
         cv2.resizeWindow("Topology Trace Result", int(w * scale), int(h * scale))
         
         cv2.imshow("Topology Trace Result", canvas)
-        print("可视化已启动，你可以任意拉伸窗口。按任意键退出...")
+        print("可视化已启动，可以任意拉伸窗口。按任意键退出...")
         cv2.waitKey(0)
         cv2.destroyAllWindows()
