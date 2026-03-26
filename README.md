@@ -83,3 +83,15 @@ g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --c
 ./astar_pathfinder_direction 1182 w 245 a 432 w
 
 ```
+```bash
+# 3. 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 版】
+g++ astar_pathfinder_direction_ros1.cpp -o astar_pathfinder_direction_ros1 \
+`pkg-config --cflags --libs opencv4` \
+-I/opt/ros/noetic/include \
+-L/opt/ros/noetic/lib \
+-lroscpp -lroscpp_serialization -lrostime -lrosconsole \
+-std=c++14
+
+./astar_pathfinder_direction_ros1 0 a 26 w
+
+```
