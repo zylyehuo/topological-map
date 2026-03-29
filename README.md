@@ -104,6 +104,6 @@ g++ astar_pathfinder_direction_ros1.cpp -o astar_pathfinder_direction_ros1 \
 -lroscpp -lroscpp_serialization -lrostime -lrosconsole \
 -std=c++14
 
-./astar_pathfinder_direction_ros1 8 d 19 a
+./astar_pathfinder_direction_ros1 0 w 12 a
 
 ```
