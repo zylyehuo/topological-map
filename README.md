@@ -84,16 +84,19 @@ g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --c
 ./astar_pathfinder_direction 1182 w 245 a 432 w
 
 ```
+#### 终点朝向固定，并且基于 ROS1 noetic 结合优化库 LBFGS 使用
+> [LBFGS_noetic](https://github.com/zylyehuo/LBFGS_noetic)
+
 ![ros1](./assets/ros1.jpg)
 ![ros1_2](./assets/ros1_2.jpg)
 ![ros1_3](./assets/ros1_3.jpg)
 ```bash
-# 4. 发布地图
+# 发布地图
 rosrun map_server map_server /home/yehuo/topological_map/cpp_version/add_direction/8/maze.yaml
 
 ```
 ```bash
-# 4. 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 版】
+# 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 版】
 g++ astar_pathfinder_direction_ros1.cpp -o astar_pathfinder_direction_ros1 \
 `pkg-config --cflags --libs opencv4` \
 -I/opt/ros/noetic/include \
@@ -101,6 +104,6 @@ g++ astar_pathfinder_direction_ros1.cpp -o astar_pathfinder_direction_ros1 \
 -lroscpp -lroscpp_serialization -lrostime -lrosconsole \
 -std=c++14
 
-./astar_pathfinder_direction_ros1 0 a 26 w
+./astar_pathfinder_direction_ros1 8 d 19 a
 
 ```
