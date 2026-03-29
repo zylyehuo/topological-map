@@ -85,6 +85,8 @@ g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --c
 
 ```
 ![ros1](./assets/ros1.jpg)
+![ros1_2](./assets/ros1_2.jpg)
+![ros1_3](./assets/ros1_3.jpg)
 ```bash
 # 4. 发布地图
 rosrun map_server map_server /home/yehuo/topological_map/cpp_version/add_direction/8/maze.yaml
