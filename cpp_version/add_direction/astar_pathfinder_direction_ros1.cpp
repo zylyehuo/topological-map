@@ -67,14 +67,15 @@ std::string dir_to_str(Direction d) {
     return "无 (-)";
 }
 
-// 辅助函数：将方向转换为 ROS 的四元数 (基于图像坐标系，+X 向右，+Y 向下)
+// 辅助函数：将方向转换为 ROS 世界坐标系的四元数 (+X向右，+Y向上)
+// 【修改点】：适配了 ROS Map 坐标系的角度，修正了 RViz 中箭头的朝向
 geometry_msgs::Quaternion dir_to_quat(Direction d) {
     tf2::Quaternion q;
     double yaw = 0.0;
     if (d == RIGHT) yaw = 0.0;
-    else if (d == DOWN) yaw = M_PI / 2.0;    // 图像中向下是 Y 轴正方向
+    else if (d == DOWN) yaw = -M_PI / 2.0;   // 图像的向下，对应 ROS 世界系里的 -Y 方向
     else if (d == LEFT) yaw = M_PI;
-    else if (d == UP) yaw = -M_PI / 2.0;     // 图像中向上是 Y 轴负方向
+    else if (d == UP) yaw = M_PI / 2.0;      // 图像的向上，对应 ROS 世界系里的 +Y 方向
     
     q.setRPY(0.0, 0.0, yaw);
     geometry_msgs::Quaternion msg;
@@ -124,7 +125,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
             double dist_cost = heuristic(nodes[current.id], nodes[neighbor_id]);
 
             if (current.gear == NEUTRAL) {
-                // 起步允许挂前进或倒车
                 if (move_dir != get_opposite(current.front_dir)) {
                     State next_state = {neighbor_id, move_dir, FORWARD};
                     double tentative_g = g_score[current] + dist_cost;
@@ -143,7 +143,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                 }
             } 
             else if (current.gear == FORWARD) {
-                // 动作 A：保持前进挡
                 if (move_dir != get_opposite(current.front_dir)) {
                     State next_state = {neighbor_id, move_dir, FORWARD};
                     double tentative_g = g_score[current] + dist_cost;
@@ -152,7 +151,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                         open_set.push({tentative_g + heuristic(nodes[neighbor_id], nodes[end_id]), next_state});
                     }
                 }
-                // 动作 B：切换为倒车档
                 if (move_dir == get_opposite(current.front_dir)) {
                     State next_state = {neighbor_id, current.front_dir, REVERSE}; 
                     double tentative_g = g_score[current] + dist_cost + 500.0; 
@@ -163,7 +161,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                 }
             } 
             else if (current.gear == REVERSE) {
-                // 动作 A：保持倒车档
                 if (move_dir != current.front_dir) {
                     State next_state = {neighbor_id, get_opposite(move_dir), REVERSE};
                     double tentative_g = g_score[current] + dist_cost;
@@ -172,7 +169,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                         open_set.push({tentative_g + heuristic(nodes[neighbor_id], nodes[end_id]), next_state});
                     }
                 }
-                // 动作 B：切换为前进挡
                 if (move_dir == current.front_dir) {
                     State next_state = {neighbor_id, current.front_dir, FORWARD}; 
                     double tentative_g = g_score[current] + dist_cost + 500.0; 
@@ -235,11 +231,10 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
 }
 
 int main(int argc, char* argv[]) {
-    // 1. 初始化 ROS 节点（需在解析自定义参数前调用，以剥离 ROS 自带参数）
+    // 1. 初始化 ROS 节点
     ros::init(argc, argv, "astar_pathfinder_node");
     ros::NodeHandle nh;
     
-    // 创建一个发布者，发布 nav_msgs::Path 消息。由于可能只发布一次，将 latch 设为 true
     ros::Publisher path_pub = nh.advertise<nav_msgs::Path>("/path", 1, true);
 
     if (argc < 5 || argc % 2 == 0) {
@@ -258,13 +253,21 @@ int main(int argc, char* argv[]) {
         route.push_back({node_id, dir});
     }
 
-    std::string img_path = "./9/9.png";
-    std::string json_path = "./9/processed_graph.json"; 
+    std::string img_path = "./8/8.pgm";
+    std::string json_path = "./8/processed_graph.json"; 
 
     cv::Mat canvas = cv::imread(img_path, cv::IMREAD_COLOR);
+    if (canvas.empty()) {
+        std::cerr << "错误：找不到图像文件，请确认 " << img_path << " 存在！\n";
+        return -1;
+    }
+    
+    // 【修改点】：保存原始图像的高度，用于之后 ROS 的 Y 轴翻转换算
+    int raw_map_height = canvas.rows;
+
     std::ifstream ifs(json_path);
-    if (!ifs.is_open() || canvas.empty()) {
-        std::cerr << "错误：找不到文件，请确认 " << img_path << " 和 " << json_path << " 存在！\n";
+    if (!ifs.is_open()) {
+        std::cerr << "错误：找不到 JSON 文件，请确认 " << json_path << " 存在！\n";
         return -1;
     }
 
@@ -323,6 +326,11 @@ int main(int argc, char* argv[]) {
 
     if (overall_success) {
         
+        // 【修改点】：添加 Map 对应的参数 (源自 maze.yaml)
+        double map_resolution = 0.05;
+        double map_origin_x = -1.931693;
+        double map_origin_y = -1.926523;
+
         // 2. 组装并发布 nav_msgs::Path
         nav_msgs::Path ros_path;
         ros_path.header.stamp = ros::Time::now();
@@ -331,11 +339,17 @@ int main(int argc, char* argv[]) {
         for (size_t i = 0; i < full_path.size(); ++i) {
             geometry_msgs::PoseStamped pose;
             pose.header = ros_path.header;
-            // 填入计算出的节点坐标 (这里直接使用解析出的 x 和 y，如果需要换算实际物理单位请按比例相乘)
-            pose.pose.position.x = nodes[full_path[i].id].x;
-            pose.pose.position.y = nodes[full_path[i].id].y;
+            
+            // 获取原图上的像素坐标
+            int px = nodes[full_path[i].id].x;
+            int py = nodes[full_path[i].id].y;
+
+            // 【修改点】：将像素坐标转换为物理世界坐标，同时进行 Y 轴翻转和平移
+            pose.pose.position.x = px * map_resolution + map_origin_x;
+            pose.pose.position.y = (raw_map_height - 1 - py) * map_resolution + map_origin_y;
             pose.pose.position.z = 0.0;
-            // 填入姿态朝向四元数
+            
+            // 填入姿态朝向四元数（已适配 ROS 世界坐标系）
             pose.pose.orientation = dir_to_quat(full_path[i].front_dir);
             
             ros_path.poses.push_back(pose);
@@ -398,11 +412,10 @@ int main(int argc, char* argv[]) {
     cv::setMouseCallback("Multi-Waypoint A-Star (Kinematics)", onMouse, &mouse_data);
     cv::imshow("Multi-Waypoint A-Star (Kinematics)", canvas);
     
-    // 如果想要在 OpenCV 界面打开时依然能够响应 ROS 事件（例如接收订阅消息等），
-    // 建议把原有的 cv::waitKey(0) 改成带超时时间的循环
+    // 如果想要在 OpenCV 界面打开时依然能够响应 ROS 事件
     while (ros::ok()) {
-        int key = cv::waitKey(30); // 30ms 刷新率
-        if (key == 27 || key == 'q' || key == 'Q') { // 按 ESC 或 Q 退出
+        int key = cv::waitKey(30); 
+        if (key == 27 || key == 'q' || key == 'Q') {
             break;
         }
         ros::spinOnce();

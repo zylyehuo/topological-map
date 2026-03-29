@@ -11,6 +11,7 @@
 ![road](./assets/road.jpg)
 ![maze_direction_change](./assets/maze_direction_change.jpg)
 ![process](./assets/process.jpg)
+![ros1](./assets/ros1.jpg)
 
 # 使用步骤
 ## 第一步：安装依赖
@@ -83,8 +84,14 @@ g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --c
 ./astar_pathfinder_direction 1182 w 245 a 432 w
 
 ```
+![ros1](./assets/ros1.jpg)
 ```bash
-# 3. 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 版】
+# 4. 发布地图
+rosrun map_server map_server /home/yehuo/topological_map/cpp_version/add_direction/8/maze.yaml
+
+```
+```bash
+# 4. 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 版】
 g++ astar_pathfinder_direction_ros1.cpp -o astar_pathfinder_direction_ros1 \
 `pkg-config --cflags --libs opencv4` \
 -I/opt/ros/noetic/include \
