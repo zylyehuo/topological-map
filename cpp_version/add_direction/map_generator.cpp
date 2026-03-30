@@ -69,8 +69,8 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
 
 int main() {
     // --- 1. 配置路径 ---
-    std::string img_path = "./8/8.pgm"; 
-    std::string json_path = "./8/map_graph.json";
+    std::string img_path = "./9/9.png"; 
+    std::string json_path = "./9/map_graph.json";
 
     const int PADDING = 40; 
 

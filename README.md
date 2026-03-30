@@ -85,7 +85,7 @@ g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --c
 
 ```
 #### 终点朝向固定，并且基于 ROS1 noetic 结合优化库 LBFGS 使用
-> [LBFGS_noetic](https://github.com/zylyehuo/LBFGS_noetic)
+> [LBFGS_noetic](https://github.com/zylyehuo/LBFGS_ROS/tree/main/noetic_ws)
 
 ![ros1](./assets/ros1.jpg)
 ![ros1_2](./assets/ros1_2.jpg)
