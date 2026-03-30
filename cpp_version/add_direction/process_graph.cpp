@@ -95,9 +95,9 @@ void clean_edges(vector<pair<int, int>>& edges) {
 
 int main() {
     // --- 1. 配置路径 ---
-    string img_path = "./9/9.png"; 
-    string json_in_path = "./9/map_graph.json";
-    string json_out_path = "./9/processed_graph.json";
+    string img_path = "./8/8.pgm"; 
+    string json_in_path = "./8/map_graph.json";
+    string json_out_path = "./8/processed_graph.json";
 
     // --- 2. 读取 JSON 文件 ---
     ifstream ifs(json_in_path);

@@ -9,6 +9,12 @@
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
 
+// ROS 2 头文件
+#include <rclcpp/rclcpp.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+
 using json = nlohmann::json;
 
 struct Node { int x, y; };
@@ -61,10 +67,29 @@ std::string dir_to_str(Direction d) {
     return "无 (-)";
 }
 
+// 辅助函数：将方向转换为 ROS 世界坐标系的四元数 (+X向右，+Y向上)
+// 【修改点】：适配了 ROS Map 坐标系的角度，修正了 RViz 中箭头的朝向
+// 【ROS 2修改点】：消息类型更新为 geometry_msgs::msg::Quaternion
+geometry_msgs::msg::Quaternion dir_to_quat(Direction d) {
+    tf2::Quaternion q;
+    double yaw = 0.0;
+    if (d == RIGHT) yaw = 0.0;
+    else if (d == DOWN) yaw = -M_PI / 2.0;   // 图像的向下，对应 ROS 世界系里的 -Y 方向
+    else if (d == LEFT) yaw = M_PI;
+    else if (d == UP) yaw = M_PI / 2.0;      // 图像的向上，对应 ROS 世界系里的 +Y 方向
+    
+    q.setRPY(0.0, 0.0, yaw);
+    geometry_msgs::msg::Quaternion msg;
+    msg.x = q.x();
+    msg.y = q.y();
+    msg.z = q.z();
+    msg.w = q.w();
+    return msg;
+}
+
 double heuristic(Node a, Node b) {
     return std::hypot(a.x - b.x, a.y - b.y);
 }
-
 
 bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int end_id, Direction target_dir, 
                        const std::vector<Node>& nodes, const std::map<int, std::vector<int>>& adj, 
@@ -101,7 +126,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
             double dist_cost = heuristic(nodes[current.id], nodes[neighbor_id]);
 
             if (current.gear == NEUTRAL) {
-                // 起步允许挂前进或倒车
                 if (move_dir != get_opposite(current.front_dir)) {
                     State next_state = {neighbor_id, move_dir, FORWARD};
                     double tentative_g = g_score[current] + dist_cost;
@@ -120,7 +144,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                 }
             } 
             else if (current.gear == FORWARD) {
-                // 动作 A：保持前进挡
                 if (move_dir != get_opposite(current.front_dir)) {
                     State next_state = {neighbor_id, move_dir, FORWARD};
                     double tentative_g = g_score[current] + dist_cost;
@@ -129,10 +152,9 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                         open_set.push({tentative_g + heuristic(nodes[neighbor_id], nodes[end_id]), next_state});
                     }
                 }
-                // 动作 B：切换为倒车档
                 if (move_dir == get_opposite(current.front_dir)) {
-                    State next_state = {neighbor_id, current.front_dir, REVERSE}; // 车头朝向不变
-                    double tentative_g = g_score[current] + dist_cost + 500.0; // 换挡成本
+                    State next_state = {neighbor_id, current.front_dir, REVERSE}; 
+                    double tentative_g = g_score[current] + dist_cost + 500.0; 
                     if (g_score.find(next_state) == g_score.end() || tentative_g < g_score[next_state]) {
                         came_from[next_state] = current; g_score[next_state] = tentative_g;
                         open_set.push({tentative_g + heuristic(nodes[neighbor_id], nodes[end_id]), next_state});
@@ -140,7 +162,6 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                 }
             } 
             else if (current.gear == REVERSE) {
-                // 动作 A：保持倒车档
                 if (move_dir != current.front_dir) {
                     State next_state = {neighbor_id, get_opposite(move_dir), REVERSE};
                     double tentative_g = g_score[current] + dist_cost;
@@ -149,10 +170,9 @@ bool find_path_segment(int start_id, Direction start_dir, Gear start_gear, int e
                         open_set.push({tentative_g + heuristic(nodes[neighbor_id], nodes[end_id]), next_state});
                     }
                 }
-                // 动作 B：切换为前进挡
                 if (move_dir == current.front_dir) {
-                    State next_state = {neighbor_id, current.front_dir, FORWARD}; // 车头朝向不变
-                    double tentative_g = g_score[current] + dist_cost + 500.0; // 换挡成本
+                    State next_state = {neighbor_id, current.front_dir, FORWARD}; 
+                    double tentative_g = g_score[current] + dist_cost + 500.0; 
                     if (g_score.find(next_state) == g_score.end() || tentative_g < g_score[next_state]) {
                         came_from[next_state] = current; g_score[next_state] = tentative_g;
                         open_set.push({tentative_g + heuristic(nodes[neighbor_id], nodes[end_id]), next_state});
@@ -212,11 +232,20 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
 }
 
 int main(int argc, char* argv[]) {
+    // 1. 初始化 ROS 2 节点
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("astar_pathfinder_node");
+    
+    // 采用 transient_local QoS 策略来实现原 ROS 1 的 latch = true
+    auto latch_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local();
+    auto path_pub = node->create_publisher<nav_msgs::msg::Path>("/path", latch_qos);
+
     if (argc < 5 || argc % 2 == 0) {
         std::cout << "\n========================================================\n";
         std::cout << "启动失败：参数数量错误！\n";
-        std::cout << "用法: ./astar_pathfinder <节点1> <朝向1> <节点2> <朝向2> ... <节点N> <朝向N>\n";
+        std::cout << "用法: ros2 run <包名> <可执行文件名> <节点1> <朝向1> <节点2> <朝向2> ... <节点N> <朝向N>\n";
         std::cout << "========================================================\n\n";
+        rclcpp::shutdown();
         return -1;
     }
 
@@ -224,7 +253,10 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i += 2) {
         int node_id = std::stoi(argv[i]);
         Direction dir = str_to_dir(argv[i+1]);
-        if (dir == NONE) return -1;
+        if (dir == NONE) {
+            rclcpp::shutdown();
+            return -1;
+        }
         route.push_back({node_id, dir});
     }
 
@@ -232,9 +264,19 @@ int main(int argc, char* argv[]) {
     std::string json_path = "./8/processed_graph.json"; 
 
     cv::Mat canvas = cv::imread(img_path, cv::IMREAD_COLOR);
+    if (canvas.empty()) {
+        std::cerr << "错误：找不到图像文件，请确认 " << img_path << " 存在！\n";
+        rclcpp::shutdown();
+        return -1;
+    }
+    
+    // 【修改点】：保存原始图像的高度，用于之后 ROS 的 Y 轴翻转换算
+    int raw_map_height = canvas.rows;
+
     std::ifstream ifs(json_path);
-    if (!ifs.is_open() || canvas.empty()) {
-        std::cerr << "错误：找不到文件，请确认 " << img_path << " 和 " << json_path << " 存在！\n";
+    if (!ifs.is_open()) {
+        std::cerr << "错误：找不到 JSON 文件，请确认 " << json_path << " 存在！\n";
+        rclcpp::shutdown();
         return -1;
     }
 
@@ -292,12 +334,46 @@ int main(int argc, char* argv[]) {
     }
 
     if (overall_success) {
-        for (size_t i = 0; i < full_path.size() - 1; ++i) {
-            if (full_path[i].gear != full_path[i+1].gear && full_path[i].gear != NEUTRAL) {
-                mouse_data.gear_shift_nodes.insert(full_path[i].id);
+        
+        // 【修改点】：添加 Map 对应的参数 (源自 maze.yaml)
+        double map_resolution = 0.05;
+        double map_origin_x = -1.931693;
+        double map_origin_y = -1.926523;
+
+        // 2. 组装并发布 nav_msgs::msg::Path
+        nav_msgs::msg::Path ros_path;
+        ros_path.header.stamp = node->now(); // ROS 2 获取当前时间
+        ros_path.header.frame_id = "map";
+
+        for (size_t i = 0; i < full_path.size(); ++i) {
+            geometry_msgs::msg::PoseStamped pose;
+            pose.header = ros_path.header;
+            
+            // 获取原图上的像素坐标
+            int px = nodes[full_path[i].id].x;
+            int py = nodes[full_path[i].id].y;
+
+            // 【修改点】：将像素坐标转换为物理世界坐标，同时进行 Y 轴翻转和平移
+            pose.pose.position.x = px * map_resolution + map_origin_x;
+            pose.pose.position.y = (raw_map_height - 1 - py) * map_resolution + map_origin_y;
+            pose.pose.position.z = 0.0;
+            
+            // 填入姿态朝向四元数（已适配 ROS 世界坐标系）
+            pose.pose.orientation = dir_to_quat(full_path[i].front_dir);
+            
+            ros_path.poses.push_back(pose);
+            
+            // 下方是原本的 UI 显示逻辑
+            if (i < full_path.size() - 1) {
+                if (full_path[i].gear != full_path[i+1].gear && full_path[i].gear != NEUTRAL) {
+                    mouse_data.gear_shift_nodes.insert(full_path[i].id);
+                }
             }
         }
 
+        // 3. 发布数据到 ROS 系统中
+        path_pub->publish(ros_path);
+        RCLCPP_INFO(node->get_logger(), "publish to /path");
 
         for (size_t i = 0; i < full_path.size() - 1; i++) {
             cv::Point p1(nodes[full_path[i].id].x + PADDING, nodes[full_path[i].id].y + PADDING);
@@ -335,8 +411,6 @@ int main(int argc, char* argv[]) {
                 cv::arrowedLine(canvas, cv::Point(pt.x + dx, pt.y + dy), pt, circle_color, 4, 8, 0, 0.3);
             }
         }
-
-        std::cout << "多点路线规划成功！红线代表前进，蓝线代表倒车。\n";
     }
 
     mouse_data.base_canvas = canvas.clone();
@@ -347,6 +421,15 @@ int main(int argc, char* argv[]) {
     cv::setMouseCallback("Multi-Waypoint A-Star (Kinematics)", onMouse, &mouse_data);
     cv::imshow("Multi-Waypoint A-Star (Kinematics)", canvas);
     
-    cv::waitKey(0);
+    // 如果想要在 OpenCV 界面打开时依然能够响应 ROS 事件
+    while (rclcpp::ok()) {
+        int key = cv::waitKey(30); 
+        if (key == 27 || key == 'q' || key == 'Q') {
+            break;
+        }
+        rclcpp::spin_some(node); // ROS 2 单次事件循环处理
+    }
+    
+    rclcpp::shutdown();
     return 0;
 }

@@ -81,7 +81,7 @@ g++ process_graph.cpp -o process_graph -std=c++11 `pkg-config --cflags --libs op
 # 3. 编译姿态约束 A* 算法（包含起点、途经点和终点）
 g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --cflags --libs opencv4` -std=c++11
 
-./astar_pathfinder_direction 1182 w 245 a 432 w
+./astar_pathfinder_direction 0 s 46 a 12 a
 
 ```
 #### 终点朝向固定，并且基于 ROS1 noetic 结合优化库 LBFGS 使用
@@ -91,19 +91,110 @@ g++ astar_pathfinder_direction.cpp -o astar_pathfinder_direction `pkg-config --c
 ![ros1_2](./assets/ros1_2.jpg)
 ![ros1_3](./assets/ros1_3.jpg)
 ```bash
-# 发布地图
+# 1. 编译基础拓扑图生成器
+g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -std=c++11
+
+./map_generator
+
+```
+
+```bash
+# 2. 节点预处理
+g++ process_graph.cpp -o process_graph -std=c++11 `pkg-config --cflags --libs opencv4`
+
+./process_graph
+
+```
+```bash
+# 3. 发布地图
 rosrun map_server map_server /home/yehuo/topological_map/cpp_version/add_direction/8/maze.yaml
 
 ```
 ```bash
-# 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 版】
-g++ astar_pathfinder_direction_ros1.cpp -o astar_pathfinder_direction_ros1 \
+# 4. 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS1 noetic 版】
+g++ astar_pathfinder_direction_noetic.cpp -o astar_pathfinder_direction_noetic \
 `pkg-config --cflags --libs opencv4` \
 -I/opt/ros/noetic/include \
 -L/opt/ros/noetic/lib \
 -lroscpp -lroscpp_serialization -lrostime -lrosconsole \
 -std=c++14
 
-./astar_pathfinder_direction_ros1 0 w 12 a
+./astar_pathfinder_direction_noetic 0 w 12 a
+
+```
+#### 终点朝向固定，并且基于 ROS2 humble 结合优化库 LBFGS 使用
+> [LBFGS_noetic](https://github.com/zylyehuo/LBFGS_ROS/tree/main/humble_ws)
+
+![ros2](./assets/ros2.jpg)
+
+```bash
+# 1. 编译基础拓扑图生成器
+g++ map_generator.cpp -o map_generator `pkg-config --cflags --libs opencv4` -std=c++11
+
+./map_generator
+
+```
+
+```bash
+# 2. 节点预处理
+g++ process_graph.cpp -o process_graph -std=c++11 `pkg-config --cflags --libs opencv4`
+
+./process_graph
+
+```
+```bash
+# 3. 发布地图
+ros2 run nav2_map_server map_server --ros-args -p yaml_filename:=/home/yehuo/topological_map/cpp_version/add_direction/8/maze.yaml
+
+# 让节点读取配置（分配内存等）
+ros2 lifecycle set /map_server configure
+
+# 激活节点（正式开始对外发布 /map 话题）
+ros2 lifecycle set /map_server activate
+
+```
+```bash
+# 4. 编译姿态约束 A* 算法（包含起点、途经点和终点）【ROS2 humble 版】
+g++ astar_pathfinder_direction_humble.cpp -o astar_pathfinder_direction_humble \
+`pkg-config --cflags --libs opencv4` \
+-I/opt/ros/humble/include/rclcpp \
+-I/opt/ros/humble/include/rcl \
+-I/opt/ros/humble/include/rcutils \
+-I/opt/ros/humble/include/rmw \
+-I/opt/ros/humble/include/rcl_yaml_param_parser \
+-I/opt/ros/humble/include/rcpputils \
+-I/opt/ros/humble/include/tracetools \
+-I/opt/ros/humble/include/rosidl_runtime_c \
+-I/opt/ros/humble/include/rosidl_runtime_cpp \
+-I/opt/ros/humble/include/rosidl_typesupport_interface \
+-I/opt/ros/humble/include/rosidl_typesupport_c \
+-I/opt/ros/humble/include/rosidl_typesupport_cpp \
+-I/opt/ros/humble/include/rosidl_typesupport_introspection_c \
+-I/opt/ros/humble/include/rosidl_typesupport_introspection_cpp \
+-I/opt/ros/humble/include/builtin_interfaces \
+-I/opt/ros/humble/include/std_msgs \
+-I/opt/ros/humble/include/geometry_msgs \
+-I/opt/ros/humble/include/nav_msgs \
+-I/opt/ros/humble/include/tf2 \
+-I/opt/ros/humble/include/rcl_interfaces \
+-I/opt/ros/humble/include/rosgraph_msgs \
+-I/opt/ros/humble/include/statistics_msgs \
+-I/opt/ros/humble/include/libstatistics_collector \
+-L/opt/ros/humble/lib \
+-lrclcpp -lrcl -lrcutils -lrmw -lrcl_yaml_param_parser -lrcpputils \
+-lrosidl_runtime_c \
+-lnav_msgs__rosidl_typesupport_cpp \
+-lgeometry_msgs__rosidl_typesupport_cpp \
+-lstd_msgs__rosidl_typesupport_cpp \
+-lbuiltin_interfaces__rosidl_typesupport_cpp \
+-lrcl_interfaces__rosidl_typesupport_cpp \
+-lrosgraph_msgs__rosidl_typesupport_cpp \
+-lstatistics_msgs__rosidl_typesupport_cpp \
+-llibstatistics_collector \
+-ltracetools \
+-ltf2 \
+-std=c++17
+
+./astar_pathfinder_direction_humble 0 w 12 a
 
 ```
